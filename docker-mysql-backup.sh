@@ -4,6 +4,7 @@
 # ARG_OPTIONAL_BOOLEAN([complete-insert],[],[Include column names in INSERT statements.],[off])
 # ARG_OPTIONAL_BOOLEAN([routines],[],[Include stored routines in the output.],[off])
 # ARG_OPTIONAL_BOOLEAN([hyphenate-filename],[y],[Use a hyphen between timestamp and database name in dump filename.],[off])
+# ARG_OPTIONAL_BOOLEAN([tail-dump],[],[Display the last few lines of the dump file.],[on])
 # ARG_POSITIONAL_SINGLE([user],[MySQL user.],[])
 # ARG_POSITIONAL_SINGLE([password],[MySQL user password],[])
 # ARG_POSITIONAL_SINGLE([host],[MySQL server host.],[])
@@ -41,12 +42,13 @@ _arg_create_info="on"
 _arg_complete_insert="off"
 _arg_routines="off"
 _arg_hyphenate_filename="off"
+_arg_tail_dump="on"
 
 
 print_help()
 {
 	printf '%s\n' "Backup a MySQL database using mysqldump inside a Docker container."
-	printf 'Usage: %s [--(no-)create-info] [--(no-)complete-insert] [--(no-)routines] [-y|--(no-)hyphenate-filename] [-h|--help] <user> <password> <host> <port> <db> <dirname>\n' "$0"
+	printf 'Usage: %s [--(no-)create-info] [--(no-)complete-insert] [--(no-)routines] [-y|--(no-)hyphenate-filename] [--(no-)tail-dump] [-h|--help] <user> <password> <host> <port> <db> <dirname>\n' "$0"
 	printf '\t%s\n' "<user>: MySQL user."
 	printf '\t%s\n' "<password>: MySQL user password"
 	printf '\t%s\n' "<host>: MySQL server host."
@@ -57,6 +59,7 @@ print_help()
 	printf '\t%s\n' "--complete-insert, --no-complete-insert: Include column names in INSERT statements. (off by default)"
 	printf '\t%s\n' "--routines, --no-routines: Include stored routines in the output. (off by default)"
 	printf '\t%s\n' "-y, --hyphenate-filename, --no-hyphenate-filename: Use a hyphen between timestamp and database name in dump filename. (off by default)"
+	printf '\t%s\n' "--tail-dump, --no-tail-dump: Display the last few lines of the dump file. (on by default)"
 	printf '\t%s\n' "-h, --help: Prints help"
 }
 
@@ -91,6 +94,10 @@ parse_commandline()
 				then
 					{ begins_with_short_option "$_next" && shift && set -- "-y" "-${_next}" "$@"; } || die "The short option '$_key' can't be decomposed to ${_key:0:2} and -${_key:2}, because ${_key:0:2} doesn't accept value and '-${_key:2:1}' doesn't correspond to a short option."
 				fi
+				;;
+			--no-tail-dump|--tail-dump)
+				_arg_tail_dump="on"
+				test "${1:0:5}" = "--no-" && _arg_tail_dump="off"
 				;;
 			-h|--help)
 				print_help
@@ -171,5 +178,11 @@ BASENAME=${DATE}${BASENAME_SEPARATOR}${_arg_db}.sql
 BU_PATH=${_arg_dirname}${BASENAME}
 
 docker run -it --rm -e MYSQL_PWD="$_arg_password" mysql:8.0.30 mysqldump ${OPTS[*]} -u "$_arg_user" -h "$_arg_host" -P "$_arg_port" "$_arg_db" 1> "$BU_PATH"
+
+if [ "$_arg_tail_dump" = "on" ]
+then
+    echo "tail of ${BU_PATH}:"
+    tail "${BU_PATH}"
+fi
 
 # ] <-- needed because of Argbash
