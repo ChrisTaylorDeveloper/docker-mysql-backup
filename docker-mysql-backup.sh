@@ -3,6 +3,7 @@
 # ARG_OPTIONAL_BOOLEAN([create-info],[],[Write CREATE TABLE statements.],[on])
 # ARG_OPTIONAL_BOOLEAN([complete-insert],[],[Include column names in INSERT statements.],[off])
 # ARG_OPTIONAL_BOOLEAN([routines],[],[Include stored routines in the output.],[off])
+# ARG_OPTIONAL_BOOLEAN([hyphenate-filename],[y],[Use a hyphen between timestamp and database name in dump filename.],[off])
 # ARG_POSITIONAL_SINGLE([user],[MySQL user.],[])
 # ARG_POSITIONAL_SINGLE([password],[MySQL user password],[])
 # ARG_POSITIONAL_SINGLE([host],[MySQL server host.],[])
@@ -28,7 +29,7 @@ die()
 
 begins_with_short_option()
 {
-	local first_option all_short_options='h'
+	local first_option all_short_options='yh'
 	first_option="${1:0:1}"
 	test "$all_short_options" = "${all_short_options/$first_option/}" && return 1 || return 0
 }
@@ -39,12 +40,13 @@ _positionals=()
 _arg_create_info="on"
 _arg_complete_insert="off"
 _arg_routines="off"
+_arg_hyphenate_filename="off"
 
 
 print_help()
 {
 	printf '%s\n' "Backup a MySQL database using mysqldump inside a Docker container."
-	printf 'Usage: %s [--(no-)create-info] [--(no-)complete-insert] [--(no-)routines] [-h|--help] <user> <password> <host> <port> <db> <dirname>\n' "$0"
+	printf 'Usage: %s [--(no-)create-info] [--(no-)complete-insert] [--(no-)routines] [-y|--(no-)hyphenate-filename] [-h|--help] <user> <password> <host> <port> <db> <dirname>\n' "$0"
 	printf '\t%s\n' "<user>: MySQL user."
 	printf '\t%s\n' "<password>: MySQL user password"
 	printf '\t%s\n' "<host>: MySQL server host."
@@ -54,6 +56,7 @@ print_help()
 	printf '\t%s\n' "--create-info, --no-create-info: Write CREATE TABLE statements. (on by default)"
 	printf '\t%s\n' "--complete-insert, --no-complete-insert: Include column names in INSERT statements. (off by default)"
 	printf '\t%s\n' "--routines, --no-routines: Include stored routines in the output. (off by default)"
+	printf '\t%s\n' "-y, --hyphenate-filename, --no-hyphenate-filename: Use a hyphen between timestamp and database name in dump filename. (off by default)"
 	printf '\t%s\n' "-h, --help: Prints help"
 }
 
@@ -76,6 +79,18 @@ parse_commandline()
 			--no-routines|--routines)
 				_arg_routines="on"
 				test "${1:0:5}" = "--no-" && _arg_routines="off"
+				;;
+			-y|--no-hyphenate-filename|--hyphenate-filename)
+				_arg_hyphenate_filename="on"
+				test "${1:0:5}" = "--no-" && _arg_hyphenate_filename="off"
+				;;
+			-y*)
+				_arg_hyphenate_filename="on"
+				_next="${_key##-y}"
+				if test -n "$_next" -a "$_next" != "$_key"
+				then
+					{ begins_with_short_option "$_next" && shift && set -- "-y" "-${_next}" "$@"; } || die "The short option '$_key' can't be decomposed to ${_key:0:2} and -${_key:2}, because ${_key:0:2} doesn't accept value and '-${_key:2:1}' doesn't correspond to a short option."
+				fi
 				;;
 			-h|--help)
 				print_help
@@ -144,8 +159,15 @@ then
     OPTS+=(--complete-insert)
 fi
 
+if [ "$_arg_hyphenate_filename" = "on" ]
+then
+    BASENAME_SEPARATOR=-
+else
+    BASENAME_SEPARATOR=_
+fi
+
 DATE=$(date '+%Y-%m-%dT%H:%M:%S')
-BASENAME=${DATE}-${_arg_db}.sql
+BASENAME=${DATE}${BASENAME_SEPARATOR}${_arg_db}.sql
 BU_PATH=${_arg_dirname}${BASENAME}
 
 docker run -it --rm -e MYSQL_PWD="$_arg_password" mysql:8.0.30 mysqldump ${OPTS[*]} -u "$_arg_user" -h "$_arg_host" -P "$_arg_port" "$_arg_db" 1> "$BU_PATH"
